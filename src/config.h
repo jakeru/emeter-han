@@ -4,7 +4,7 @@
 
 // Pins
 #define CONF_PIN_LED_STATUS 13
-#define CONF_PIN_DATA_RX 16
+#define CONF_PIN_DATA_RX 21
 
 // WiFi settings
 #define WIFI_SSID ""

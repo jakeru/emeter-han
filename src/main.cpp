@@ -5,8 +5,6 @@
 #include "config.h"
 #include "message.h"
 
-static void callbackForMQTT(char *topic, byte *bytes, unsigned int length);
-
 static WiFiClient s_wifiClient;
 static PubSubClient s_mqttClient(s_wifiClient);
 static uint32_t s_timeLastConnect;
@@ -16,8 +14,14 @@ static uint32_t s_lastDataAt;
 static MessageBuffer s_msgbuf;
 static uint32_t s_lastBlinkAt;
 
+static void callbackForMQTT(char *topic, byte *bytes, unsigned int length);
+
 static bool timeAtOrAfter(uint32_t t, uint32_t now) {
   return (int32_t)(now - t) >= 0;
+}
+
+static void setStatusLED(bool state) {
+  digitalWrite(CONF_PIN_LED_STATUS, state);
 }
 
 static void setupWiFi() {
@@ -27,11 +31,14 @@ static void setupWiFi() {
   WiFi.setHostname(WIFI_HOSTNAME);
   Serial.printf("Connecting to %s...\n", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
+  unsigned int counter = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Trying to connect...");
+    delay(1000);
+    setStatusLED(counter % 2 != 0);
+    counter++;
   }
+  WiFi.setAutoReconnect(true);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
@@ -108,13 +115,15 @@ void setup() {
   Serial.println("Booting");
 
   pinMode(CONF_PIN_LED_STATUS, OUTPUT);
-  digitalWrite(CONF_PIN_LED_STATUS, HIGH);
+  setStatusLED(true);
 
   setupWiFi();
   setupOTA();
   setupMQTT();
 
-  Serial1.begin(115200, SERIAL_8N1, CONF_PIN_DATA_RX);
+  setStatusLED(false);
+
+  Serial2.begin(115200, SERIAL_8N1, CONF_PIN_DATA_RX, -1, true);
 }
 
 static void callbackForMQTT(char *topic, byte *bytes, unsigned int length) {}
@@ -125,14 +134,14 @@ void loop() {
 
   uint32_t t = millis();
   if (timeAtOrAfter(s_lastBlinkAt + 2000, t)) {
-    digitalWrite(CONF_PIN_LED_STATUS, HIGH);
+    setStatusLED(true);
   }
   if (timeAtOrAfter(s_lastBlinkAt + 2200, t)) {
     s_lastBlinkAt = t;
-    digitalWrite(CONF_PIN_LED_STATUS, LOW);
+    setStatusLED(false);
   }
-  while (Serial1.available() > 0) {
-    s_msgbuf.append((char)Serial1.read());
+  while (Serial2.available() > 0) {
+    s_msgbuf.append((char)Serial2.read());
     s_lastDataAt = millis();
   }
 
