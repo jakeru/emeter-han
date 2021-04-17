@@ -2,19 +2,27 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
+#include <map>
+#include <string>
+#include <vector>
+
 #include "config.h"
-#include "message.h"
+#include "parser.h"
+
+using namespace std;
 
 static WiFiClient s_wifiClient;
 static PubSubClient s_mqttClient(s_wifiClient);
 static uint32_t s_timeLastConnect;
 static bool s_hasTriedToConnect;
 static bool s_mqttConnected;
-static uint32_t s_lastDataAt;
-static MessageBuffer s_msgbuf;
 static uint32_t s_lastBlinkAt;
+static Parser s_parser;
 
-static void callbackForMQTT(char *topic, byte *bytes, unsigned int length);
+static vector<RegValue> s_regvalues;
+typedef std::map<string, string> table_t;
+static table_t s_units;
+static table_t s_values;
 
 static bool timeAtOrAfter(uint32_t t, uint32_t now) {
   return (int32_t)(now - t) >= 0;
@@ -73,7 +81,6 @@ static void publishStatus() {
 
 static void setupMQTT() {
   s_mqttClient.setServer(MQTT_SERVER, MQTT_SERVER_PORT);
-  s_mqttClient.setCallback(callbackForMQTT);
 }
 
 static bool connectMQTT() {
@@ -106,7 +113,35 @@ static void loopMQTT() {
       s_hasTriedToConnect = true;
       s_timeLastConnect = now;
     }
-    return;
+  }
+}
+
+static void store_and_report(table_t &table, const string &reg,
+                             const string &data, const string &base_topic) {
+  const auto reported = table.find(reg);
+  if (reported == table.end() || reported->second != data) {
+    const string topic = base_topic + reg;
+    Serial.printf("Reporting %s to topic %s\n", data.c_str(), topic.c_str());
+    s_mqttClient.publish(topic.c_str(), data.c_str(), true);
+    table[reg] = data;
+  }
+}
+
+static void reg_value_cb(const RegValue &rv) { s_regvalues.push_back(rv); }
+
+static void frame_start_cb(const std::string &header) {
+  Serial.printf("Frame start: %s\n", header.c_str());
+  s_regvalues.clear();
+}
+
+static void frame_end_cb() {
+  Serial.printf("Frame end\n");
+  Serial.write(s_parser.frame().c_str());
+  for (auto &&rv : s_regvalues) {
+    Serial.printf("Reg %s value %s unit %s\n", rv.reg.c_str(), rv.value.c_str(),
+                  rv.unit.c_str());
+    store_and_report(s_units, rv.reg, rv.unit, MQTT_UNITS_TOPIC);
+    store_and_report(s_values, rv.reg, rv.value, MQTT_VALUES_TOPIC);
   }
 }
 
@@ -124,31 +159,24 @@ void setup() {
   setStatusLED(false);
 
   Serial2.begin(115200, SERIAL_8N1, CONF_PIN_DATA_RX, -1, true);
-}
 
-static void callbackForMQTT(char *topic, byte *bytes, unsigned int length) {}
+  s_parser.reg_value_cb_ = reg_value_cb;
+  s_parser.frame_start_cb_ = frame_start_cb;
+  s_parser.frame_end_cb_ = frame_end_cb;
+}
 
 void loop() {
   ArduinoOTA.handle();
   loopMQTT();
 
-  uint32_t t = millis();
-  if (timeAtOrAfter(s_lastBlinkAt + 2000, t)) {
-    setStatusLED(true);
-  }
+  const uint32_t t = millis();
   if (timeAtOrAfter(s_lastBlinkAt + 2200, t)) {
     s_lastBlinkAt = t;
     setStatusLED(false);
+  } else if (timeAtOrAfter(s_lastBlinkAt + 2000, t)) {
+    setStatusLED(true);
   }
   while (Serial2.available() > 0) {
-    s_msgbuf.append((char)Serial2.read());
-    s_lastDataAt = millis();
-  }
-
-  if (!s_msgbuf.str().empty() && timeAtOrAfter(s_lastDataAt + 1000, millis())) {
-    Serial.printf("Publishing %zu B:", s_msgbuf.str().size());
-    Serial.println(s_msgbuf.str().c_str());
-    s_mqttClient.publish(MQTT_DATA_TOPIC, s_msgbuf.str().c_str(), true);
-    s_msgbuf.clear();
+    s_parser.feed((char)Serial2.read());
   }
 }
