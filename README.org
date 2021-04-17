@@ -1,0 +1,92 @@
+#+TITLE: ESP32 Electricity meter MQTT
+
+This application Collects data from an electricity meter and forwards it to a
+MQTT server. The HAN port is used to get the data out from the Electricity
+meter. It is available on all meters installed in Sweden after around year 2020
+or so.
+
+Written by Jakob Ruhe (jakob.ruhe@gmail.com) April 2021.
+
+Inspiration from:
+https://www.hanporten.se
+
+* Hardware
+** Needed hardware
+- A RJ11 cable to connect to the HAN port of your electricity meter. You will
+  need to cut it to the length you want and be able to connect the wires to your
+  device.
+- A ESP32 board. A ESP8266 board should work as well, but would require some
+  minor modifications to the source code and =platform.ini=.
+  I have tested the software with a [[https://www.adafruit.com/product/3405][Adafruit HUZZAH32 – ESP32 Feather Board]] but
+  basically any board should work by modifying the =platform.ini= file a bit.
+- A resistor of about 10 K Ohm to pull up the data signal to 3.3 V.
+
+** How to connect it
+- Connect =VCC= (Pin 1) and =DATA REQUEST= (Pin 2) of the RJ12 port in order for
+  the meter to actually send data.
+- Connect =DATA GND= (Pin 3) of the RJ12 to the ground pin of your board.
+- Connect =DATA OUT= (Pin 5) of the RJ12 to the =CONF_PIN_DATA_RX= (set in
+  =config.h=) pin of your board.
+- Connect =CONF_PIN_DATA_RX= pin on your board to the =3.3 V= pin of your board
+  using a 10 K Ohm resistor. This must be done in order to pull up the signal
+  coming from the =DATA REQUEST= pin.
+See [[see][HANporten - Svenska porten]] for more details.
+
+* Software
+** Dependencies
+*** Toolchain
+This project requires [[https://platformio.org][PlatformIO]] and its Core (CLI) package. Installation
+instructions about how to install it can be found here:
+[[https://docs.platformio.org/en/latest/core/installation.html#installation-methods][Install PlatformIO Core (CLI)]].
+
+*** MQTT server
+You also need an MQTT server. Either you run it locally in your home on a
+Raspberry Pi or similar, or you can choose to run it on a server on the
+Internet.
+
+This is the server I run on my Raspberry Pi 4 at home:
+[[https://mosquitto.org][Eclipse Mosquitto - An open source MQTT broker]].
+
+If you want a cloud based solution the first two hits on Google will probably
+work fine as well:
+- [[https://www.cloudmqtt.com][CloudMQTT - Hosted message broker for the
+  Internet of Things]]
+- [[https://www.hivemq.com][HiveMQ Cloud - Free Fully Managed MQTT Platform]]
+
+** Test on host
+#+begin_src bash
+pio test
+#+end_src
+
+** Configure
+Open the file =src/config.h= and set:
+- SSID and passphrase needed to access your WiFi.
+- Address and port of the MQTT server.
+- MQTT account settings.
+- Set the MQTT base topic if you have multiple electricity meters in your home
+  or if you prefer another name.
+- Set the pin to use for the LED (it depends on your board).
+- Set the pin that you have connected to the DATA pin of the HAN port.
+
+** Build for target
+#+begin_src bash
+pio run -e huzzah32
+#+end_src
+
+** Upload
+Configure the file =platformio.ini= to use the right serial port. Then flash the
+MCU like this:
+#+begin_src bash
+pio run -e huzzah32 --target upload
+#+end_src
+
+Read the data from the serial port and make sure the device connects successfully to your WiFi
+and to your MQTT server.
+With Python it can be done like this:
+#+begin_src bash
+python -m serial /dev/ttyUSB0 115200
+#+end_src
+
+When the device is connected to your WiFi you can upgrade the software over the
+air. See =platform.ini= for instructions.
+
