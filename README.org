@@ -1,36 +1,52 @@
 #+TITLE: ESP32 Electricity meter MQTT
 
-This application Collects data from an electricity meter and forwards it to a
+Written by Jakob Ruhe (jakob.ruhe@gmail.com) April 2021.
+
+* Introduction
+This application collects data from an electricity meter and forwards it to a
 MQTT server. The HAN port is used to get the data out from the Electricity
 meter. It is available on all meters installed in Sweden after around year 2020
 or so.
 
-Written by Jakob Ruhe (jakob.ruhe@gmail.com) April 2021.
+Note that you may need to contact the company that delivers the electricity to
+your home and tell them to activate the HAN port in your electricity meter. For
+Ellevio that can be done through [[https://ellevio.se/privat][My pages at Ellevio]].
 
-Inspiration from:
-https://www.hanporten.se
+This application is inspired by the web site [[https://www.hanporten.se][HANporten.se]] which contains more
+information about the HAN port and the protocol.
 
 * Hardware
 ** Needed hardware
-- A RJ11 cable to connect to the HAN port of your electricity meter. You will
+- A RJ12 cable to connect to the HAN port of your electricity meter. You will
   need to cut it to the length you want and be able to connect the wires to your
-  device.
+  board.
 - A ESP32 board. A ESP8266 board should work as well, but would require some
   minor modifications to the source code and =platform.ini=.
   I have tested the software with a [[https://www.adafruit.com/product/3405][Adafruit HUZZAH32 – ESP32 Feather Board]] but
-  basically any board should work by modifying the =platform.ini= file a bit.
+  basically any board should work by modifying the =platform.ini= and
+  =src/config.h= files a bit.
 - A resistor of about 10 K Ohm to pull up the data signal to 3.3 V.
+- A LiPo battery or USB cable and charger, depending on how you power your board.
 
 ** How to connect it
-- Connect =VCC= (Pin 1) and =DATA REQUEST= (Pin 2) of the RJ12 port in order for
+- Connect =VCC= (Pin 1) and =DATA REQUEST= (Pin 2) of the HAN port in order for
   the meter to actually send data.
-- Connect =DATA GND= (Pin 3) of the RJ12 to the ground pin of your board.
-- Connect =DATA OUT= (Pin 5) of the RJ12 to the =CONF_PIN_DATA_RX= (set in
-  =config.h=) pin of your board.
+- Connect =DATA GND= (Pin 3) of the HAN port to the ground pin of your board.
+- Connect =DATA OUT= (Pin 5) of the HAN port to the =CONF_PIN_DATA_RX= (set in
+  =config.h=) pin of your board. Make sure to choose a pin that can act as a
+  digital input pin.
 - Connect =CONF_PIN_DATA_RX= pin on your board to the =3.3 V= pin of your board
   using a 10 K Ohm resistor. This must be done in order to pull up the signal
   coming from the =DATA REQUEST= pin.
-See [[see][HANporten - Svenska porten]] for more details.
+
+See [[see][HANporten - Svenska porten]] for more details about the pins of the HAN port.
+
+** Power your board
+The =VCC= pin of the HAN port is at 5 V and is able to deliver 250 mA. That is
+probably enough to power your board. But note that you should not power your
+board from the electricity meter while the board is also getting power from its
+USB port. I have so far only tested to drive my board from a LiPo battery
+instead of the electricity meter.
 
 * Software
 ** Dependencies
@@ -80,13 +96,13 @@ MCU like this:
 pio run -e huzzah32 --target upload
 #+end_src
 
-Read the data from the serial port and make sure the device connects successfully to your WiFi
-and to your MQTT server.
-With Python it can be done like this:
+Read the data from the serial port and make sure the board connects
+successfully to your WiFi and to your MQTT server. With Python it can be done
+like this:
 #+begin_src bash
 python -m serial /dev/ttyUSB0 115200
 #+end_src
 
-When the device is connected to your WiFi you can upgrade the software over the
+When the board is connected to your WiFi you can upgrade the software over the
 air. See =platform.ini= for instructions.
 
