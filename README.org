@@ -19,14 +19,11 @@ information about the HAN port and the protocol.
 ** Needed hardware
 - A RJ12 cable to connect to the HAN port of your electricity meter. You will
   need to cut it to the length you want and be able to connect the wires to your
-  board.
-- A ESP32 board. A ESP8266 board should work as well, but would require some
-  minor modifications to the source code and =platform.ini=.
-  I have tested the software with a [[https://www.adafruit.com/product/3405][Adafruit HUZZAH32 – ESP32 Feather Board]] but
-  basically any board should work by modifying the =platform.ini= and
-  =src/config.h= files a bit.
-- A resistor of about 10 K Ohm to pull up the data signal to 3.3 V.
-- A LiPo battery or USB cable and charger, depending on how you power your board.
+  board. Note that some wires are crossed and some are not!
+- An ESP32 or ESP8266 board. I have tested the software with a
+  [[https://www.adafruit.com/product/3405][Adafruit HUZZAH32 – ESP32 Feather Board]] but basically any board should work
+  by modifying the =platform.ini= and =src/config.h= files a bit.
+- A resistor of something between 1k and 10k ohm to pull up the data signal to 3.3 V.
 
 ** How to connect it
 - Connect =VCC= (Pin 1) and =DATA REQUEST= (Pin 2) of the HAN port in order for
@@ -36,8 +33,10 @@ information about the HAN port and the protocol.
   =config.h=) pin of your board. Make sure to choose a pin that can act as a
   digital input pin.
 - Connect =CONF_PIN_DATA_RX= pin on your board to the =3.3 V= pin of your board
-  using a 10 K Ohm resistor. This must be done in order to pull up the signal
-  coming from the =DATA REQUEST= pin.
+  using a 1k to 10k ohm resistor. This must be done because the =DATA_REQUEST=
+  pin is of open collector type. In addition to this, it is also inverted, so it
+  is normally low. Low (close to 0 V) translates to a logical =1= and high
+  (close to 3.3 V) is a logical =0=.
 
 See [[see][HANporten - Svenska porten]] for more details about the pins of the HAN port.
 
@@ -45,8 +44,7 @@ See [[see][HANporten - Svenska porten]] for more details about the pins of the H
 The =VCC= pin of the HAN port is at 5 V and is able to deliver 250 mA. That is
 probably enough to power your board. But note that you should not power your
 board from the electricity meter while the board is also getting power from its
-USB port. I have so far only tested to drive my board from a LiPo battery
-instead of the electricity meter.
+USB port. Note that not all electricity meters supply a 5 V at the =VCC= pin.
 
 * Software
 ** Dependencies
@@ -81,12 +79,18 @@ Open the file =src/config.h= and set:
 - MQTT account settings.
 - Set the MQTT base topic if you have multiple electricity meters in your home
   or if you prefer another name.
-- Set the pin to use for the LED (it depends on your board).
-- Set the pin that you have connected to the DATA pin of the HAN port.
+- Set the pins to use for the LEDs (it depends on your board).
+- Set the pin (=CONF_PIN_DATA_RX=) that you have connected to the DATA pin of
+  the HAN port.
 
 ** Build for target
+Two targets are supported. One ESP32:
 #+begin_src bash
 pio run -e huzzah32
+#+end_src
+And one based on ESP8266:
+#+begin_src bash
+pio run -e esp12
 #+end_src
 
 ** Upload

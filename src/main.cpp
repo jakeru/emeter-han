@@ -1,6 +1,11 @@
 #include <ArduinoOTA.h>
 #include <PubSubClient.h>
+
+#ifdef ESP8266
+#include <ESP8266WiFi.h>
+#else
 #include <WiFi.h>
+#endif
 
 #include <map>
 #include <string>
@@ -29,24 +34,27 @@ static bool timeAtOrAfter(uint32_t t, uint32_t now) {
 }
 
 static void setStatusLED(bool state) {
-  digitalWrite(CONF_PIN_LED_STATUS, state);
+  digitalWrite(CONF_PIN_STATUS_LED, state);
+}
+
+static void setMeterLED(bool state) {
+  digitalWrite(CONF_PIN_METER_LED, state);
 }
 
 static void setupWiFi() {
-  WiFi.disconnect(true);
-  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(WIFI_HOSTNAME);
-  Serial.printf("Connecting to %s...\n", WIFI_SSID);
+  Serial.printf("Connecting to %s...", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned int counter = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Trying to connect...");
-    delay(1000);
+    Serial.print(".");
+    Serial.println(WiFi.status());
+    delay(500);
     setStatusLED(counter % 2 != 0);
     counter++;
   }
-  WiFi.setAutoReconnect(true);
+  Serial.println(" Connected");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
@@ -114,6 +122,10 @@ static void loopMQTT() {
       s_timeLastConnect = now;
     }
   }
+  else if (!s_mqttConnected) {
+      Serial.println("Connected with MQTT server again");
+      s_mqttConnected = true;
+  }
 }
 
 static void store_and_report(table_t &table, const string &reg,
@@ -130,6 +142,7 @@ static void store_and_report(table_t &table, const string &reg,
 static void reg_value_cb(const RegValue &rv) { s_regvalues.push_back(rv); }
 
 static void frame_start_cb(const std::string &header) {
+  setMeterLED(true);
   Serial.printf("Frame start: %s\n", header.c_str());
   s_regvalues.clear();
 }
@@ -143,22 +156,30 @@ static void frame_end_cb() {
     store_and_report(s_units, rv.reg, rv.unit, MQTT_UNITS_TOPIC);
     store_and_report(s_values, rv.reg, rv.value, MQTT_VALUES_TOPIC);
   }
+  setMeterLED(false);
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting");
-
-  pinMode(CONF_PIN_LED_STATUS, OUTPUT);
+  pinMode(CONF_PIN_STATUS_LED, OUTPUT);
   setStatusLED(true);
+
+  pinMode(CONF_PIN_METER_LED, OUTPUT);
+  setMeterLED(true);
+
+  const bool serialInvert = true;
+#ifdef ESP8266
+  Serial.begin(115200, SERIAL_8N1, SERIAL_FULL, CONF_PIN_TX, serialInvert);
+#else
+  Serial.begin(115200, SERIAL_8N1, CONF_PIN_RX, CONF_PIN_TX, serialInvert);
+#endif
+  Serial.println("Booting");
 
   setupWiFi();
   setupOTA();
   setupMQTT();
 
   setStatusLED(false);
-
-  Serial2.begin(115200, SERIAL_8N1, CONF_PIN_DATA_RX, -1, true);
+  setMeterLED(false);
 
   s_parser.reg_value_cb_ = reg_value_cb;
   s_parser.frame_start_cb_ = frame_start_cb;
@@ -169,14 +190,21 @@ void loop() {
   ArduinoOTA.handle();
   loopMQTT();
 
-  const uint32_t t = millis();
-  if (timeAtOrAfter(s_lastBlinkAt + 2200, t)) {
-    s_lastBlinkAt = t;
-    setStatusLED(false);
-  } else if (timeAtOrAfter(s_lastBlinkAt + 2000, t)) {
-    setStatusLED(true);
+  if (s_mqttConnected) {
+      setStatusLED(true);
   }
-  while (Serial2.available() > 0) {
-    s_parser.feed((char)Serial2.read());
+  else {
+    const uint32_t t = millis();
+    if (timeAtOrAfter(s_lastBlinkAt + 2200, t)) {
+      s_lastBlinkAt = t;
+      setStatusLED(false);
+    } else if (timeAtOrAfter(s_lastBlinkAt + 2000, t)) {
+      setStatusLED(true);
+    }
+  }
+  while (Serial.available() > 0) {
+    const char c = Serial.read();
+    Serial.print(c);
+    s_parser.feed(c);
   }
 }
